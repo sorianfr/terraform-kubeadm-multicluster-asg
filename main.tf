@@ -261,6 +261,45 @@ resource "null_resource" "copy_files_to_bastion" {
   }
 }
 
+#---------------------------------------------
+# Generate Ansible inventory from Terraform outputs
+#---------------------------------------------
+
+resource "local_file" "ansible_inventory" {
+  filename = "${path.module}/../ansible/inventory/hosts.yml"
+  content = templatefile("${path.module}/templates/ansible_inventory.yml.tpl", {
+    bastion_public_dns = aws_instance.bastion.public_dns
+    clusters = {
+      for c in var.clusters : c.name => {
+        controlplane_private_ip = c.controlplane_private_ip
+        pod_cidr                = c.pod_cidr
+        service_cidr            = c.service_cidr
+      }
+    }
+    ssh_key_path = "${path.module}/my_k8s_key.pem"
+  })
+}
+
+#---------------------------------------------
+# Outputs for Ansible inventory generation
+#---------------------------------------------
+
+output "bastion_public_dns" {
+  description = "Public DNS of the bastion host"
+  value       = aws_instance.bastion.public_dns
+}
+
+output "clusters" {
+  description = "Map of clusters with control plane IP and pod/service CIDRs"
+  value = {
+    for c in var.clusters : c.name => {
+      controlplane_private_ip = try(c.controlplane_private_ip, null)
+      pod_cidr                = try(c.pod_cidr, null)
+      service_cidr            = try(c.service_cidr, null)
+    }
+  }
+}
+
 # locals {
 #   controlplane_ips = [for c in var.clusters : c.controlplane_private_ip]
 # }

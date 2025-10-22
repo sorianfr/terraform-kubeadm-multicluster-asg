@@ -19,6 +19,8 @@ mkdir -p /home/ubuntu/.kube
 sudo cp -i /etc/kubernetes/admin.conf /home/ubuntu/.kube/config
 sudo chown ubuntu:ubuntu /home/ubuntu/.kube/config
 
+sleep 60
+
 # --- Store join command in Secrets Manager ---
 # Properly quote the join command so AWS CLI receives it as a single argument
 JOIN_CMD="$(kubeadm token create --ttl 0 --print-join-command || echo 'failed')"
