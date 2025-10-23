@@ -11,6 +11,7 @@ all:
           ansible_host: ${cluster.controlplane_private_ip}
           cluster_name: ${name}
           pod_network_cidr: "${cluster.pod_cidr}"
+          kubeconfig_path: "~/ansible/kubeconfigs/${name}-kubeconfig.yaml"
 %{ endfor ~}
       vars:
         ansible_user: ubuntu

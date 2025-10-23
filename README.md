@@ -14,3 +14,9 @@ See `terraform.tfvars` for cluster definitions.
 #PACKER
 packer init .
 packer build ami.pkr.hcl
+
+
+
+#ANSIBLE
+ansible-playbook -i inventory/hosts.yml playbooks/setup_kubeconfigs.yml
+kubectl config get-contexts

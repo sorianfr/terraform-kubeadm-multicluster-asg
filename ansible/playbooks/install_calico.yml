@@ -1,0 +1,42 @@
+---
+- name: Install Calico (Tigera) on all Kubernetes clusters
+  hosts: control_planes
+  gather_facts: false
+  become: true
+
+  vars:
+    # Use cluster-specific pod_network_cidr from inventory
+    pod_network_cidr: "{{ pod_network_cidr }}"
+
+  pre_tasks:
+    - name: Ensure Python dependencies for k8s modules are present
+      ansible.builtin.pip:
+        name:
+          - kubernetes
+          - openshift
+        state: present
+      become: true
+
+    - name: Ensure kubeconfig exists (optional)
+      ansible.builtin.stat:
+        path: "{{ kubeconfig_path | default('~/.kube/config') }}"
+      register: kubeconfig_stat
+
+    - name: Set K8S_AUTH_KUBECONFIG when kubeconfig exists
+      ansible.builtin.set_fact:
+        ansible_env:
+          K8S_AUTH_KUBECONFIG: "{{ kubeconfig_path | default('~/.kube/config') }}"
+      when: kubeconfig_stat.stat.exists
+
+    - name: Set KUBECONFIG environment variable
+      ansible.builtin.set_fact:
+        ansible_env:
+          KUBECONFIG: "{{ kubeconfig_path | default('~/.kube/config') }}"
+
+    - name: Display cluster information
+      ansible.builtin.debug:
+        msg: "Installing Calico on {{ cluster_name }} with pod_network_cidr: {{ pod_network_cidr }}"
+
+  roles:
+    - role: calico
+

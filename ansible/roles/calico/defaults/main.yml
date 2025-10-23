@@ -1,0 +1,9 @@
+---
+# Default variables for Calico role
+
+# Pod network CIDR used by Calico IP pool
+pod_network_cidr: "192.168.0.0/16"
+
+# Optional kubeconfig path if not using in-cluster config
+kubeconfig_path: "~/.kube/config"
+

@@ -1,0 +1,50 @@
+---
+# Install Calico (Tigera operator) on Ubuntu 22.04 clusters
+# Assumes kubeconfig is available on target hosts or provided via K8S_AUTH_* env vars
+
+- name: Ensure kubectl is available
+  ansible.builtin.command: which kubectl
+  register: kubectl_check
+  changed_when: false
+
+- name: Create manifests directory
+  ansible.builtin.file:
+    path: "/tmp/calico"
+    state: directory
+    mode: "0755"
+
+- name: Download Tigera operator manifest
+  ansible.builtin.get_url:
+    url: "https://raw.githubusercontent.com/projectcalico/calico/v3.27.3/manifests/tigera-operator.yaml"
+    dest: "/tmp/calico/tigera-operator.yaml"
+    mode: "0644"
+
+- name: Apply Tigera operator
+  kubernetes.core.k8s:
+    state: present
+    src: "/tmp/calico/tigera-operator.yaml"
+
+- name: Render Calico Installation manifest
+  ansible.builtin.template:
+    src: "installation.yaml.j2"
+    dest: "/tmp/calico/installation.yaml"
+    mode: "0644"
+
+- name: Apply Calico Installation manifest
+  kubernetes.core.k8s:
+    state: present
+    src: "/tmp/calico/installation.yaml"
+
+- name: Wait for Calico components to be ready
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    namespace: calico-system
+  register: calico_deployments
+  retries: 30
+  delay: 10
+  until: >-
+    calico_deployments.resources | selectattr('status.availableReplicas', 'defined') | list | length > 0 and
+    (calico_deployments.resources | map(attribute='status.availableReplicas') | list | sum) > 0
+
+

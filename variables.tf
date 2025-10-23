@@ -53,10 +53,16 @@ variable "clusters" {
 }
 
 
+variable "key_pair_name" {
+  description = "Name for the AWS key pair and local key file"
+  type        = string
+  default     = "k8s-key"
+}
+
 variable "copy_files_to_bastion" {
   description = "List of local files that should be copied to the bastion host"
   type        = list(string)
   default = [
-    "my_k8s_key.pem"
+    "k8s-key.pem"
   ]
 }

@@ -1,0 +1,24 @@
+---
+# Variables specific to control plane nodes
+ansible_become: true
+
+# Ensure Python dependencies are available
+ansible_python_interpreter: /usr/bin/python3
+
+# Kubernetes cluster configuration
+# These will be set per cluster in the inventory
+pod_network_cidr: "{{ pod_network_cidr | default('192.168.0.0/16') }}"
+
+# Calico installation settings
+calico_installation:
+  variant: Calico
+  registry: ""
+  kubernetesProvider: Kubernetes
+  calicoNetwork:
+    bgp: Enabled
+    ipPools:
+      - blockSize: 26
+        cidr: "{{ pod_network_cidr }}"
+        encapsulation: VXLANCrossSubnet
+        natOutgoing: Enabled
+        nodeSelector: all()

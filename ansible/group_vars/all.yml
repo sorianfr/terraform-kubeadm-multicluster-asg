@@ -1,0 +1,17 @@
+---
+# Global variables for all clusters
+ansible_user: ubuntu
+ansible_ssh_private_key_file: "{{ playbook_dir }}/../terraform-kubeadm-multicluster-asg/{{ key_pair_name | default('k8s-key') }}.pem"
+ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
+
+# Bastion host configuration (will be set by Terraform output)
+bastion_public_dns: ""
+
+# Default pod network CIDR (can be overridden per cluster)
+pod_network_cidr: "192.168.0.0/16"
+
+# Kubernetes configuration
+kubeconfig_path: "~/.kube/config"
+
+# Calico configuration
+calico_version: "v3.27.3"

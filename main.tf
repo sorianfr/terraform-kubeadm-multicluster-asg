@@ -29,13 +29,13 @@ resource "tls_private_key" "k8s_key_pair" {
 
 # Key Pair
 resource "aws_key_pair" "k8s_key_pair" {
-  key_name   = "my_k8s_key"
+  key_name   = var.key_pair_name
   public_key = tls_private_key.k8s_key_pair.public_key_openssh
 }
 
 # Save the private key locally
 resource "local_file" "save_private_key" {
-  filename        = "${path.module}/my_k8s_key.pem"
+  filename        = "${path.module}/${var.key_pair_name}.pem"
   content         = tls_private_key.k8s_key_pair.private_key_pem
   file_permission = "0600"
 
@@ -255,11 +255,12 @@ resource "null_resource" "copy_files_to_bastion" {
       sleep 60
       for file in ${join(" ", var.copy_files_to_bastion)}; do
         echo "Copying $file to bastion"
-        scp -i "my_k8s_key.pem" -o StrictHostKeyChecking=no "$file" ubuntu@${aws_instance.bastion.public_dns}:~/
+        scp -i "${var.key_pair_name}.pem" -o StrictHostKeyChecking=no "$file" ubuntu@${aws_instance.bastion.public_dns}:~/
       done
     EOT
   }
 }
+
 
 resource "null_resource" "copy_ansible_to_bastion" {
   depends_on = [aws_instance.bastion, local_file.ansible_inventory]
@@ -268,9 +269,9 @@ resource "null_resource" "copy_ansible_to_bastion" {
     command = <<-EOT
       echo "Copying ansible directory to bastion..."
       # First copy the directory
-      scp -i "my_k8s_key.pem" -o StrictHostKeyChecking=no -r ../ansible ubuntu@${aws_instance.bastion.public_dns}:~/
+      scp -i "${path.module}/${var.key_pair_name}.pem" -o StrictHostKeyChecking=no -r ${path.module}/ansible ubuntu@${aws_instance.bastion.public_dns}:~/
       # Then copy the generated inventory file specifically
-      scp -i "my_k8s_key.pem" -o StrictHostKeyChecking=no ../ansible/inventory/hosts.yml ubuntu@${aws_instance.bastion.public_dns}:~/ansible/inventory/hosts.yml
+      scp -i "${path.module}/${var.key_pair_name}.pem" -o StrictHostKeyChecking=no ${path.module}/ansible/inventory/hosts.yml ubuntu@${aws_instance.bastion.public_dns}:~/ansible/inventory/hosts.yml
     EOT
   }
 }
@@ -280,7 +281,7 @@ resource "null_resource" "copy_ansible_to_bastion" {
 #---------------------------------------------
 
 resource "local_file" "ansible_inventory" {
-  filename = "${path.module}/../ansible/inventory/hosts.yml"
+  filename = "${path.module}/ansible/inventory/hosts.yml"
   content = templatefile("${path.module}/templates/ansible_inventory.yml.tpl", {
     bastion_public_dns = aws_instance.bastion.public_dns
     clusters = {
@@ -290,7 +291,7 @@ resource "local_file" "ansible_inventory" {
         service_cidr            = c.service_cidr
       }
     }
-    ssh_key_path = "${path.module}/my_k8s_key.pem"
+    ssh_key_path = "/home/ubuntu/${var.key_pair_name}.pem"
   })
 }
 
@@ -314,6 +315,13 @@ output "clusters" {
   }
 }
 
+output "kubeconfig_locations" {
+  description = "Kubeconfig file locations on bastion host"
+  value = {
+    for c in var.clusters : c.name => "~/ansible/kubeconfigs/${c.name}-kubeconfig.yaml"
+  }
+}
+
 # locals {
 #   controlplane_ips = [for c in var.clusters : c.controlplane_private_ip]
 # }
@@ -333,9 +341,9 @@ output "clusters" {
 #             ${path.module}/my_k8s_key.pem ubuntu@$${ip}:/home/ubuntu/.ssh/
 #         
 #         ssh -o StrictHostKeyChecking=no \
-#             -o ProxyCommand="ssh -i ${path.module}/my_k8s_key.pem -W %h:%p ubuntu@$${BASTION_DNS}" \
-#             -i ${path.module}/my_k8s_key.pem ubuntu@$${ip} \
-#             "chmod 600 /home/ubuntu/.ssh/my_k8s_key.pem && chown ubuntu:ubuntu /home/ubuntu/.ssh/my_k8s_key.pem"
+#             -o ProxyCommand="ssh -i ${path.module}/${var.key_pair_name}.pem -W %h:%p ubuntu@$${BASTION_DNS}" \
+#             -i ${path.module}/${var.key_pair_name}.pem ubuntu@$${ip} \
+#             "chmod 600 /home/ubuntu/.ssh/${var.key_pair_name}.pem && chown ubuntu:ubuntu /home/ubuntu/.ssh/${var.key_pair_name}.pem"
 #       done
 #     EOT
 #   }
