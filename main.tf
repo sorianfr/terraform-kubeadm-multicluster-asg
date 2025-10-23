@@ -261,6 +261,20 @@ resource "null_resource" "copy_files_to_bastion" {
   }
 }
 
+resource "null_resource" "copy_ansible_to_bastion" {
+  depends_on = [aws_instance.bastion, local_file.ansible_inventory]
+  
+  provisioner "local-exec" {
+    command = <<-EOT
+      echo "Copying ansible directory to bastion..."
+      # First copy the directory
+      scp -i "my_k8s_key.pem" -o StrictHostKeyChecking=no -r ../ansible ubuntu@${aws_instance.bastion.public_dns}:~/
+      # Then copy the generated inventory file specifically
+      scp -i "my_k8s_key.pem" -o StrictHostKeyChecking=no ../ansible/inventory/hosts.yml ubuntu@${aws_instance.bastion.public_dns}:~/ansible/inventory/hosts.yml
+    EOT
+  }
+}
+
 #---------------------------------------------
 # Generate Ansible inventory from Terraform outputs
 #---------------------------------------------

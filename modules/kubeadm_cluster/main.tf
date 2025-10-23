@@ -250,7 +250,16 @@ resource "aws_iam_role_policy_attachment" "worker_ssm_core" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
 }
 
+resource "aws_secretsmanager_secret" "join_command" {
+  name        = "${var.name}/comando-unir"
+  description = "Join command for Kubernetes workers in ${var.name}"
+  recovery_window_in_days = 0
+}
 
+resource "aws_secretsmanager_secret_version" "join_command_placeholder" {
+  secret_id     = aws_secretsmanager_secret.join_command.id
+  secret_string = "waiting-for-controlplane"
+}
 
 
 

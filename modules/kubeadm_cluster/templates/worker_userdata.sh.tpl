@@ -16,38 +16,20 @@ done
 # Wait for the join command secret
 # ==========
 
-echo "Waiting for join command secret:..."
-RETRIES=60
-DELAY=10
-
-for ((i=1; i<=RETRIES; i++)); do
-  if aws secretsmanager describe-secret --region "${region}" --secret-id "${cluster_name}/comando-unir" >/dev/null 2>&1; then
-    echo "Secret found after $i attempts."
-    break
-  fi
-  echo "Secret not yet available. Retrying in $DELAY seconds... ($i/$RETRIES)"
-  sleep $DELAY
-done
-
-# If still not found after all retries, log and exit
-if ! aws secretsmanager describe-secret --region "${region}" --secret-id "${cluster_name}/comando-unir" >/dev/null 2>&1; then
-  echo "ERROR: Secret not found after $((RETRIES * DELAY)) seconds." >&2
-  exit 1
-fi
-
-# ==========
-# Fetch and execute join command
-# ==========
-
-JOIN_CMD=$(aws secretsmanager get-secret-value \
+# Wait until secret is updated
+echo "Waiting for join command secret..."
+until JOIN_CMD=$(aws secretsmanager get-secret-value \
   --region "${region}" \
   --secret-id "${cluster_name}/comando-unir" \
   --query SecretString \
-  --output text)
+  --output text 2>/dev/null) && [[ "$JOIN_CMD" != "waiting-for-controlplane" ]]; do
+  echo "Join command not yet available. Retrying..."
+  sleep 10
+done
 
-echo "Running join command..."
-$JOIN_CMD
-
+# Execute join command
+echo "Running: $JOIN_CMD"
+eval $JOIN_CMD
 # ==========
 # Done
 # ==========

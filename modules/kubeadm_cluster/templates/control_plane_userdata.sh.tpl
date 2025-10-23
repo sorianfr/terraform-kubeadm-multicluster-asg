@@ -26,19 +26,12 @@ sleep 60
 JOIN_CMD="$(kubeadm token create --ttl 0 --print-join-command || echo 'failed')"
 JOIN_CMD="$JOIN_CMD --cri-socket unix:///var/run/containerd/containerd.sock"
 
-if aws secretsmanager describe-secret --region "${region}" --secret-id "${cluster_name}/comando-unir" >/dev/null 2>&1; then
-  echo "Updating join secret"
-  aws secretsmanager update-secret \
-    --region "${region}" \
-    --secret-id "${cluster_name}/comando-unir" \
-    --secret-string "$JOIN_CMD" || true
-else
-  echo "Creating join secret"
-  aws secretsmanager create-secret \
-    --region "${region}" \
-    --name "${cluster_name}/comando-unir" \
-    --secret-string "$JOIN_CMD" || true
-fi
-
+# Update existing secret (created by Terraform)
+echo "Updating join command in Secrets Manager..."
+aws secretsmanager put-secret-value \
+  --region "${region}" \
+  --secret-id "${cluster_name}/comando-unir" \
+  --secret-string "$JOIN_CMD" || true
+  
 # --- Marker file ---
 echo "User data completed successfully at $(date)" | sudo tee /var/log/user_data_done.log
