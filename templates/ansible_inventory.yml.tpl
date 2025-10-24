@@ -16,6 +16,4 @@ all:
       vars:
         ansible_user: ubuntu
         ansible_ssh_private_key_file: "${ssh_key_path}"
-        # Proxy through bastion host
-        bastion_host: "${bastion_public_dns}"
-        ansible_ssh_common_args: '-o StrictHostKeyChecking=no -o ProxyCommand="ssh -i ${ssh_key_path} -W %h:%p ubuntu@${bastion_public_dns}"'
+        ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
