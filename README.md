@@ -10,7 +10,6 @@ Each cluster has:
 See `terraform.tfvars` for cluster definitions.
 
 
-
 #PACKER
 packer init .
 packer build ami.pkr.hcl

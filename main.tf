@@ -322,29 +322,25 @@ output "kubeconfig_locations" {
   }
 }
 
-# locals {
-#   controlplane_ips = [for c in var.clusters : c.controlplane_private_ip]
-# }
-#
-# resource "null_resource" "copy_files_to_controlplanes" {
-#   depends_on = [module.clusters] # ensures all clusters are ready
-#
-#   provisioner "local-exec" {
-#     command = <<-EOT
-#       echo "Copying SSH key to all control planes via bastion..."
-#       BASTION_DNS="${aws_instance.bastion.public_dns}"
-#       for ip in ${join(" ", local.controlplane_ips)}; do
-#         echo "Copying key to $${ip} via $${BASTION_DNS}..."
-#         scp -o StrictHostKeyChecking=no \
-#             -o ProxyCommand="ssh -i ${path.module}/my_k8s_key.pem -W %h:%p ubuntu@$${BASTION_DNS}" \
-#             -i ${path.module}/my_k8s_key.pem \
-#             ${path.module}/my_k8s_key.pem ubuntu@$${ip}:/home/ubuntu/.ssh/
-#         
-#         ssh -o StrictHostKeyChecking=no \
-#             -o ProxyCommand="ssh -i ${path.module}/${var.key_pair_name}.pem -W %h:%p ubuntu@$${BASTION_DNS}" \
-#             -i ${path.module}/${var.key_pair_name}.pem ubuntu@$${ip} \
-#             "chmod 600 /home/ubuntu/.ssh/${var.key_pair_name}.pem && chown ubuntu:ubuntu /home/ubuntu/.ssh/${var.key_pair_name}.pem"
-#       done
-#     EOT
-#   }
-# }
+resource "local_file" "ansible_all_clusters_vars" {
+  content = yamlencode({
+    bastion_host = aws_instance.bastion.public_dns
+    clusters = {
+      for c in var.clusters : c.name => {
+        controlplane_ip = c.controlplane_private_ip
+        pod_cidr        = c.pod_cidr
+        service_cidr    = c.service_cidr
+        kubeconfig      = "~/ansible/kubeconfigs/${c.name}-kubeconfig.yaml"
+        
+        # Calico config with defaults
+        calico_version  = try(c.calico_version, "v3.27.0")
+        encapsulation   = try(c.encapsulation, "VXLANCrossSubnet")
+        bgp             = try(c.bgp, "Enabled")
+        nat_outgoing    = try(c.nat_outgoing, "Enabled")
+        block_size      = try(c.block_size, 26)
+      }
+    }
+  })
+  
+  filename = "${path.module}/ansible/group_vars/all.yml"
+}

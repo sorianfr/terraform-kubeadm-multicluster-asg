@@ -1,17 +1,21 @@
+---
 apiVersion: operator.tigera.io/v1
 kind: Installation
 metadata:
   name: default
 spec:
-  variant: Calico
-  registry: ""
-  kubernetesProvider: Kubernetes
   calicoNetwork:
     bgp: Enabled
     ipPools:
-      - blockSize: 26
-        cidr: "{{ pod_network_cidr }}"
-        encapsulation: VXLANCrossSubnet
-        natOutgoing: Enabled
-        nodeSelector: all()
-
+    - name: default-ipv4-ippool
+      blockSize: 26
+      cidr: {{ pod_cidr }}
+      encapsulation: {{ encapsulation }}
+      natOutgoing: Enabled
+      nodeSelector: all()
+---
+apiVersion: operator.tigera.io/v1
+kind: APIServer
+metadata:
+  name: default
+spec: {}
