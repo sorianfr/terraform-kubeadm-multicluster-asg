@@ -1,9 +1,13 @@
 ---
-# Default variables for Calico role
+# Calico role defaults
+# These will be overridden by playbook variables
 
-# Pod network CIDR used by Calico IP pool
-pod_network_cidr: "192.168.0.0/16"
+calico_version: "v3.27.0"
+encapsulation: "VXLANCrossSubnet"
+bgp: "Enabled"
+nat_outgoing: "Enabled"
+block_size: 26
 
-# Optional kubeconfig path if not using in-cluster config
-kubeconfig_path: "~/.kube/config"
-
+# Timeouts (in seconds)
+calico_operator_timeout: 300
+calico_installation_timeout: 600

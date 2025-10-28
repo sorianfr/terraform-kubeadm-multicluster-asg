@@ -3,40 +3,58 @@
   hosts: control_planes
   gather_facts: false
   become: true
+  
+  vars_files:
+    - ../group_vars/all.yml
 
   vars:
-    # Use cluster-specific pod_network_cidr from inventory
-    pod_network_cidr: "{{ pod_network_cidr }}"
+    # Extract cluster-specific config
+    cluster_config: "{{ clusters[cluster_name] }}"
+    
+    # Map variables for the role and templates
+    pod_cidr: "{{ cluster_config.pod_cidr }}"
+    service_cidr: "{{ cluster_config.service_cidr }}"
+    calico_version: "{{ cluster_config.calico_version }}"
+    encapsulation: "{{ cluster_config.encapsulation }}"
+    bgp: "{{ cluster_config.bgp }}"
+    nat_outgoing: "{{ cluster_config.nat_outgoing }}"
+    block_size: "{{ cluster_config.block_size }}"
+    kubeconfig_path: "{{ cluster_config.kubeconfig }}"
 
   pre_tasks:
-    - name: Ensure Python dependencies for k8s modules are present
-      ansible.builtin.pip:
-        name:
-          - kubernetes
-          - openshift
-        state: present
-      become: true
-
-    - name: Ensure kubeconfig exists (optional)
-      ansible.builtin.stat:
-        path: "{{ kubeconfig_path | default('~/.kube/config') }}"
-      register: kubeconfig_stat
-
-    - name: Set K8S_AUTH_KUBECONFIG when kubeconfig exists
-      ansible.builtin.set_fact:
-        ansible_env:
-          K8S_AUTH_KUBECONFIG: "{{ kubeconfig_path | default('~/.kube/config') }}"
-      when: kubeconfig_stat.stat.exists
-
-    - name: Set KUBECONFIG environment variable
-      ansible.builtin.set_fact:
-        ansible_env:
-          KUBECONFIG: "{{ kubeconfig_path | default('~/.kube/config') }}"
-
     - name: Display cluster information
       ansible.builtin.debug:
-        msg: "Installing Calico on {{ cluster_name }} with pod_network_cidr: {{ pod_network_cidr }}"
+        msg:
+          - "=========================================="
+          - "Cluster: {{ cluster_name }}"
+          - "Control Plane: {{ cluster_config.controlplane_ip }}"
+          - "Pod CIDR: {{ pod_cidr }}"
+          - "Service CIDR: {{ service_cidr }}"
+          - "Calico Version: {{ calico_version }}"
+          - "Encapsulation: {{ encapsulation }}"
+          - "Kubeconfig: {{ kubeconfig_path }}"
+          - "=========================================="
+
+    - name: Ensure kubeconfig exists
+      ansible.builtin.stat:
+        path: "{{ kubeconfig_path }}"
+      register: kubeconfig_stat
+
+    - name: Fail if kubeconfig does not exist
+      ansible.builtin.fail:
+        msg: "Kubeconfig not found at {{ kubeconfig_path }}"
+      when: not kubeconfig_stat.stat.exists
+
+    - name: Test kubectl connectivity
+      ansible.builtin.command: kubectl cluster-info
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path }}"
+      changed_when: false
+      register: cluster_info_check
+
+    - name: Display cluster info
+      ansible.builtin.debug:
+        var: cluster_info_check.stdout_lines
 
   roles:
     - role: calico
-

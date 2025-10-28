@@ -4,16 +4,31 @@
 
 all:
   children:
-    control_planes:
+    controlplanes:
       hosts:
 %{ for name, cluster in clusters ~}
-        ${name}_control_plane:
+        ${name}_controlplane:
           ansible_host: ${cluster.controlplane_private_ip}
           cluster_name: ${name}
           pod_network_cidr: "${cluster.pod_cidr}"
+          service_cidr: "${cluster.service_cidr}"
           kubeconfig_path: "~/ansible/kubeconfigs/${name}-kubeconfig.yaml"
 %{ endfor ~}
       vars:
         ansible_user: ubuntu
         ansible_ssh_private_key_file: "${ssh_key_path}"
         ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
+
+# One group per cluster
+%{ for name, cluster in clusters ~}
+${name}:
+  hosts:
+    ${name}_controlplane:
+%{ endfor ~}
+
+# Meta-group for all clusters
+clusters:
+  children:
+%{ for name, cluster in clusters ~}
+    ${name}:
+%{ endfor ~}

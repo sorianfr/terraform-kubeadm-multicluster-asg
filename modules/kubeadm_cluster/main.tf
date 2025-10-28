@@ -356,3 +356,8 @@ resource "aws_autoscaling_group" "workers" {
   }
 
 }
+
+output "controlplane_private_ip" {
+  description = "Private IP of the cluster control plane instance"
+  value       = var.controlplane_private_ip
+}

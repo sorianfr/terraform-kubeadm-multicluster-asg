@@ -1,50 +1,165 @@
 ---
-# Install Calico (Tigera operator) on Ubuntu 22.04 clusters
-# Assumes kubeconfig is available on target hosts or provided via K8S_AUTH_* env vars
+- name: Create temporary directory for Calico manifests
+  ansible.builtin.file:
+    path: "/tmp/calico-{{ cluster_name }}"
+    state: directory
+    mode: '0755'
 
-- name: Ensure kubectl is available
-  ansible.builtin.command: which kubectl
-  register: kubectl_check
+- name: Download Calico Tigera operator manifest
+  ansible.builtin.get_url:
+    url: "https://raw.githubusercontent.com/projectcalico/calico/{{ calico_version }}/manifests/tigera-operator.yaml"
+    dest: "/tmp/calico-{{ cluster_name }}/tigera-operator.yaml"
+    mode: '0644'
+    timeout: 30
+  register: operator_download
+  retries: 3
+  delay: 5
+  until: operator_download is succeeded
+
+- name: Apply Calico Tigera operator
+  ansible.builtin.shell: kubectl create -f /tmp/calico-{{ cluster_name }}/tigera-operator.yaml
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+  register: operator_apply
+  changed_when: "'created' in operator_apply.stdout or 'configured' in operator_apply.stdout"
+
+- name: Wait for tigera-operator namespace
+  ansible.builtin.shell: kubectl get namespace tigera-operator
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+  register: tigera_ns
+  retries: 10
+  delay: 3
+  until: tigera_ns.rc == 0
   changed_when: false
 
-- name: Create manifests directory
-  ansible.builtin.file:
-    path: "/tmp/calico"
-    state: directory
-    mode: "0755"
+- name: Wait for tigera-operator deployment to be ready
+  ansible.builtin.shell: kubectl rollout status deployment/tigera-operator -n tigera-operator --timeout=300s
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+  changed_when: false
+  register: operator_rollout
 
-- name: Download Tigera operator manifest
-  ansible.builtin.get_url:
-    url: "https://raw.githubusercontent.com/projectcalico/calico/v3.27.3/manifests/tigera-operator.yaml"
-    dest: "/tmp/calico/tigera-operator.yaml"
-    mode: "0644"
-
-- name: Apply Tigera operator
-  kubernetes.core.k8s:
-    state: present
-    src: "/tmp/calico/tigera-operator.yaml"
-
-- name: Render Calico Installation manifest
+- name: Generate Calico custom resources from template
   ansible.builtin.template:
-    src: "installation.yaml.j2"
-    dest: "/tmp/calico/installation.yaml"
-    mode: "0644"
+    src: installation.yaml.j2
+    dest: "/tmp/calico-{{ cluster_name }}/custom-resources.yaml"
+    mode: '0644'
+  register: custom_resources_template
 
-- name: Apply Calico Installation manifest
-  kubernetes.core.k8s:
-    state: present
-    src: "/tmp/calico/installation.yaml"
+- name: Display generated custom resources path
+  ansible.builtin.debug:
+    msg: "Custom resources generated at: /tmp/calico-{{ cluster_name }}/custom-resources.yaml"
+  when: custom_resources_template is changed
 
-- name: Wait for Calico components to be ready
-  kubernetes.core.k8s_info:
-    api_version: apps/v1
-    kind: Deployment
-    namespace: calico-system
-  register: calico_deployments
-  retries: 30
+- name: Apply Calico custom resources
+  ansible.builtin.shell: kubectl apply -f /tmp/calico-{{ cluster_name }}/custom-resources.yaml
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+  register: custom_resources_apply
+  changed_when: "'created' in custom_resources_apply.stdout or 'configured' in custom_resources_apply.stdout"
+
+- name: Wait for calico-system namespace
+  ansible.builtin.shell: kubectl get namespace calico-system
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+  register: calico_ns
+  retries: 20
+  delay: 5
+  until: calico_ns.rc == 0
+  changed_when: false
+
+- name: Wait for Calico node DaemonSet to be ready
+  ansible.builtin.shell: kubectl rollout status daemonset/calico-node -n calico-system --timeout=600s
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+  register: calico_node_rollout
+  retries: 2
   delay: 10
-  until: >-
-    calico_deployments.resources | selectattr('status.availableReplicas', 'defined') | list | length > 0 and
-    (calico_deployments.resources | map(attribute='status.availableReplicas') | list | sum) > 0
+  until: calico_node_rollout.rc == 0
+  changed_when: false
 
+- name: Wait for Calico kube-controllers deployment to be ready
+  ansible.builtin.shell: kubectl rollout status deployment/calico-kube-controllers -n calico-system --timeout=300s
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+  changed_when: false
+  register: controllers_rollout
 
+- name: Get Calico pods status
+  ansible.builtin.shell: kubectl get pods -n calico-system -o wide
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+  register: calico_pods
+  changed_when: false
+
+- name: Display Calico pods
+  ansible.builtin.debug:
+    var: calico_pods.stdout_lines
+
+- name: Get Calico Installation status
+  ansible.builtin.shell: kubectl get installation default -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}'
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+  register: calico_ready
+  changed_when: false
+  failed_when: false
+
+- name: Display Calico installation status
+  ansible.builtin.debug:
+    msg: "Calico Ready: {{ calico_ready.stdout | default('Unknown') }}"
+
+- name: Verify IP pools
+  ansible.builtin.shell: kubectl get ippools -o yaml
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+  register: ip_pools
+  changed_when: false
+  failed_when: false
+
+- name: Display IP pool configuration
+  ansible.builtin.debug:
+    var: ip_pools.stdout_lines
+  when: ip_pools.rc == 0
+
+- name: Get nodes status
+  ansible.builtin.shell: kubectl get nodes -o wide
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+  register: nodes
+  changed_when: false
+
+- name: Display nodes status
+  ansible.builtin.debug:
+    var: nodes.stdout_lines
+
+- name: Verify all nodes are Ready
+  ansible.builtin.shell: kubectl get nodes --no-headers | awk '{print $2}' | grep -v "Ready" || true
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+  register: not_ready_nodes
+  changed_when: false
+
+- name: Warn if nodes are not ready
+  ansible.builtin.debug:
+    msg: "WARNING: Some nodes are not in Ready state"
+  when: not_ready_nodes.stdout != ""
+
+- name: Installation summary
+  ansible.builtin.debug:
+    msg:
+      - "=========================================="
+      - "✅ Calico CNI Installation Complete!"
+      - "=========================================="
+      - "Cluster: {{ cluster_name }}"
+      - "Calico Version: {{ calico_version }}"
+      - "Pod CIDR: {{ pod_cidr }}"
+      - "Service CIDR: {{ service_cidr }}"
+      - "Encapsulation: {{ encapsulation }}"
+      - "BGP: {{ bgp }}"
+      - "=========================================="
+      - "Verify with:"
+      - "  kubectl --kubeconfig={{ kubeconfig_path }} get pods -n calico-system"
+      - "  kubectl --kubeconfig={{ kubeconfig_path }} get nodes"
+      - "  kubectl --kubeconfig={{ kubeconfig_path }} get installation default"
+      - "=========================================="
