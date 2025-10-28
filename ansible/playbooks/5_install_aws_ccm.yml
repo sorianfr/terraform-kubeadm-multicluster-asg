@@ -1,0 +1,51 @@
+---
+- name: Install AWS Cloud Controller Manager on enabled clusters
+  hosts: control_planes
+  gather_facts: false
+  become: true
+
+  vars_files:
+    - ../group_vars/all.yml
+
+  vars:
+    cluster_config: "{{ clusters[cluster_name] }}"
+    kubeconfig_path: "{{ cluster_config.kubeconfig }}"
+    enable_aws_ccm: "{{ cluster_config.enable_aws_ccm | default(false) }}"
+    aws_ccm_image: "{{ cluster_config.aws_ccm_image | default(aws_ccm_image_default) }}"
+
+  pre_tasks:
+    - name: Skip cluster when AWS CCM is disabled
+      ansible.builtin.meta: end_play
+      when: not (enable_aws_ccm | bool)
+
+    - name: Display AWS CCM installation context
+      ansible.builtin.debug:
+        msg:
+          - "=========================================="
+          - "Cluster: {{ cluster_name }}"
+          - "Control Plane: {{ cluster_config.controlplane_ip }}"
+          - "AWS Region: {{ aws_region }}"
+          - "Pod CIDR: {{ cluster_config.pod_cidr }}"
+          - "Service CIDR: {{ cluster_config.service_cidr }}"
+          - "AWS CCM Image: {{ aws_ccm_image }}"
+          - "Kubeconfig: {{ kubeconfig_path }}"
+          - "=========================================="
+
+    - name: Ensure kubeconfig exists
+      ansible.builtin.stat:
+        path: "{{ kubeconfig_path }}"
+      register: kubeconfig_stat
+
+    - name: Fail if kubeconfig does not exist
+      ansible.builtin.fail:
+        msg: "Kubeconfig not found at {{ kubeconfig_path }}"
+      when: not kubeconfig_stat.stat.exists
+
+  roles:
+    - role: aws_ccm
+      vars:
+        cluster_name: "{{ cluster_name }}"
+        pod_cidr: "{{ cluster_config.pod_cidr }}"
+        region: "{{ aws_region }}"
+        kubeconfig_path: "{{ kubeconfig_path }}"
+        aws_ccm_image: "{{ aws_ccm_image }}"

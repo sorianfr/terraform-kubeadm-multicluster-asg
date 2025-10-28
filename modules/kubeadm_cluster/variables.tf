@@ -93,3 +93,9 @@ variable "worker_ebs_volumes" {
   }))
   default = []
 }
+
+variable "enable_aws_ccm" {
+  description = "Enable configuration required for the external AWS Cloud Controller Manager"
+  type        = bool
+  default     = false
+}

@@ -1,0 +1,42 @@
+---
+- name: Ensure directory for AWS CCM manifest exists
+  ansible.builtin.file:
+    path: "/tmp/aws-ccm-{{ cluster_name }}"
+    state: directory
+    mode: '0755'
+
+- name: Render AWS Cloud Controller Manager manifest
+  ansible.builtin.template:
+    src: aws-cloud-controller-manager.yaml.j2
+    dest: "/tmp/aws-ccm-{{ cluster_name }}/manifest.yaml"
+    mode: '0644'
+  vars:
+    aws_ccm_image: "{{ aws_ccm_image }}"
+
+- name: Apply AWS Cloud Controller Manager manifest
+  ansible.builtin.shell: kubectl apply -f /tmp/aws-ccm-{{ cluster_name }}/manifest.yaml
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+  register: apply_ccm
+  changed_when: "'created' in apply_ccm.stdout or 'configured' in apply_ccm.stdout"
+
+- name: Wait for AWS Cloud Controller Manager deployment to be ready
+  ansible.builtin.shell: kubectl rollout status deployment/aws-cloud-controller-manager -n kube-system --timeout=300s
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+  register: ccm_rollout
+  retries: 3
+  delay: 20
+  until: ccm_rollout.rc == 0
+  changed_when: false
+
+- name: Display AWS CCM deployment status
+  ansible.builtin.shell: kubectl get pods -n kube-system -l k8s-app=aws-cloud-controller-manager -o wide
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+  register: ccm_pods
+  changed_when: false
+
+- name: Show AWS CCM pods
+  ansible.builtin.debug:
+    var: ccm_pods.stdout_lines

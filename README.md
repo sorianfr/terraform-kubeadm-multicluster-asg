@@ -6,6 +6,7 @@ Each cluster has:
 - Worker Auto Scaling Group
 - Pod CIDR and Service CIDR configurable per cluster
 - Permanent kubeadm join command stored securely in AWS Secrets Manager
+- Optional AWS Cloud Controller Manager (CCM) configuration that enables the external AWS cloud provider integration when `enable_aws_ccm = true`
 
 See `terraform.tfvars` for cluster definitions.
 
@@ -21,3 +22,5 @@ cp ./k8s-key.pem /mnt/c/Users/soria/.ssh/k8s-key.pem
 #ANSIBLE
 ansible-playbook -i inventory/hosts.yml playbooks/setup_kubeconfigs.yml
 kubectl config get-contexts
+
+To deploy the AWS CCM on clusters that enable it, run `ansible-playbook playbooks/5_install_aws_ccm.yml` from the bastion or your local machine after provisioning. The playbook installs the controller only on clusters with `enable_aws_ccm` enabled.

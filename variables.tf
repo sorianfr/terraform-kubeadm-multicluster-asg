@@ -49,6 +49,8 @@ variable "clusters" {
       volume_type = string
       device_name = string
     })), []) # default to empty list if not provided
+    enable_aws_ccm = optional(bool, false)
+    aws_ccm_image  = optional(string, null)
   }))
 }
 

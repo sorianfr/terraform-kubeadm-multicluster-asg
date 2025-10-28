@@ -9,6 +9,7 @@ clusters = [
     worker_desired             = 1
     pod_cidr                   = "10.244.0.0/16"
     service_cidr               = "10.96.0.0/12"
+    enable_aws_ccm             = true
   },
   {
     name                       = "cluster2"
@@ -27,5 +28,6 @@ clusters = [
         volume_type = "gp3"
       }
     ]
+    enable_aws_ccm             = false
   }
 ]

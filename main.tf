@@ -245,6 +245,7 @@ module "clusters" {
   worker_desired  = each.value.worker_desired
   pod_cidr        = each.value.pod_cidr
   service_cidr    = each.value.service_cidr
+  enable_aws_ccm  = each.value.enable_aws_ccm
 
     depends_on = [aws_nat_gateway.shared_nat_gw]
 }
@@ -332,6 +333,23 @@ resource "local_file" "ansible_all_group_vars" {
     bgp_default            = "Enabled"
     nat_outgoing_default   = "Enabled"
     block_size_default     = 26
+    aws_region             = var.region
+    aws_ccm_image_default  = "registry.k8s.io/provider-aws/cloud-controller-manager:v1.29.0"
+    clusters = {
+      for cluster in var.clusters : cluster.name => {
+        controlplane_ip = cluster.controlplane_private_ip
+        pod_cidr        = cluster.pod_cidr
+        service_cidr    = cluster.service_cidr
+        kubeconfig      = "~/ansible/kubeconfigs/${cluster.name}-kubeconfig.yaml"
+        calico_version  = try(cluster.calico_version, null)
+        encapsulation   = try(cluster.encapsulation, null)
+        bgp             = try(cluster.bgp, null)
+        nat_outgoing    = try(cluster.nat_outgoing, null)
+        block_size      = try(cluster.block_size, null)
+        enable_aws_ccm  = try(cluster.enable_aws_ccm, false)
+        aws_ccm_image   = try(cluster.aws_ccm_image, null)
+      }
+    }
   })
 }
 resource "local_file" "ansible_cluster_group_vars" {
@@ -352,6 +370,9 @@ resource "local_file" "ansible_cluster_group_vars" {
     bgp             = try(each.value.bgp, null)
     nat_outgoing    = try(each.value.nat_outgoing, null)
     block_size      = try(each.value.block_size, null)
+    enable_aws_ccm  = try(each.value.enable_aws_ccm, false)
+    aws_ccm_image   = try(each.value.aws_ccm_image, null)
+    aws_region      = var.region
   })
 }
 

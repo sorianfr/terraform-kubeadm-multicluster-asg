@@ -1,6 +1,21 @@
 #!/bin/bash
 set -xe
 
+# Configure kubelet for external cloud provider if required
+%{ if enable_aws_ccm }
+INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)
+AVAILABILITY_ZONE=$(curl -s http://169.254.169.254/latest/meta-data/placement/availability-zone)
+PROVIDER_ID="aws:///$${AVAILABILITY_ZONE}/$${INSTANCE_ID}"
+
+sudo systemctl stop kubelet || true
+sudo mkdir -p /etc/systemd/system/kubelet.service.d
+cat <<EOF | sudo tee /etc/systemd/system/kubelet.service.d/20-cloud-provider.conf
+[Service]
+Environment="KUBELET_EXTRA_ARGS=--cloud-provider=external --provider-id=$${PROVIDER_ID}"
+EOF
+sudo systemctl daemon-reload
+%{ endif }
+
 # Wait for the API server to be ready before attempting to join
 echo "Waiting for API server at $API_SERVER:$PORT to be ready..."
 
