@@ -14,6 +14,8 @@ See `terraform.tfvars` for cluster definitions.
 packer init .
 packer build ami.pkr.hcl
 
+#copia key a .ssh para poder hacer remote connect
+cp ./k8s-key.pem /mnt/c/Users/soria/.ssh/k8s-key.pem
 
 
 #ANSIBLE

@@ -1,0 +1,36 @@
+---
+- name: Install Calico CNI from bastion for all clusters
+  hosts: localhost
+  connection: local
+  gather_facts: no
+
+  vars:
+    kubeconfig_dir: "{{ lookup('env','HOME') }}/ansible/kubeconfigs"
+    calico_manifest_url: "https://raw.githubusercontent.com/projectcalico/calico/v3.27.3/manifests/calico.yaml"
+
+  tasks:
+
+    - name: Ensure kubectl is installed
+      ansible.builtin.command: which kubectl
+      register: kubectl_check
+      changed_when: false
+
+    - name: Download Calico manifest
+      ansible.builtin.get_url:
+        url: "{{ calico_manifest_url }}"
+        dest: /tmp/calico.yaml
+        mode: '0644'
+
+    - name: Apply Calico manifest for each cluster
+      ansible.builtin.shell: |
+        cluster_name=$(basename "{{ item }}" | sed 's/-kubeconfig.yaml//')
+        echo ">>> Applying Calico for $cluster_name ..."
+        kubectl --kubeconfig "{{ item }}" apply -f /tmp/calico.yaml
+      args:
+        executable: /bin/bash
+      loop: "{{ lookup('ansible.builtin.fileglob', kubeconfig_dir + '/*-kubeconfig.yaml', wantlist=True) }}"
+      register: calico_apply
+
+    - name: Show results
+      ansible.builtin.debug:
+        var: calico_apply.stdout_lines

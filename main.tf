@@ -322,25 +322,75 @@ output "kubeconfig_locations" {
   }
 }
 
-resource "local_file" "ansible_all_clusters_vars" {
+resource "local_file" "ansible_all_group_vars" {
+  filename = "${path.module}/ansible/group_vars/all.yml"
   content = yamlencode({
     bastion_host = aws_instance.bastion.public_dns
-    clusters = {
-      for c in var.clusters : c.name => {
-        controlplane_ip = c.controlplane_private_ip
-        pod_cidr        = c.pod_cidr
-        service_cidr    = c.service_cidr
-        kubeconfig      = "~/ansible/kubeconfigs/${c.name}-kubeconfig.yaml"
-        
-        # Calico config with defaults
-        calico_version  = try(c.calico_version, "v3.27.0")
-        encapsulation   = try(c.encapsulation, "VXLANCrossSubnet")
-        bgp             = try(c.bgp, "Enabled")
-        nat_outgoing    = try(c.nat_outgoing, "Enabled")
-        block_size      = try(c.block_size, 26)
-      }
-    }
+
+    calico_version_default = "v3.27.0"
+    encapsulation_default  = "VXLANCrossSubnet"
+    bgp_default            = "Enabled"
+    nat_outgoing_default   = "Enabled"
+    block_size_default     = 26
   })
-  
-  filename = "${path.module}/ansible/group_vars/all.yml"
+}
+resource "local_file" "ansible_cluster_group_vars" {
+  for_each = {
+    for c in var.clusters : c.name => c
+  }
+
+  filename = "${path.module}/ansible/group_vars/${each.key}.yml"
+
+  content = yamlencode({
+    controlplane_ip = each.value.controlplane_private_ip
+    pod_cidr        = each.value.pod_cidr
+    service_cidr    = each.value.service_cidr
+    kubeconfig      = "~/ansible/kubeconfigs/${each.key}-kubeconfig.yaml"
+
+    calico_version  = try(each.value.calico_version, null)
+    encapsulation   = try(each.value.encapsulation, null)
+    bgp             = try(each.value.bgp, null)
+    nat_outgoing    = try(each.value.nat_outgoing, null)
+    block_size      = try(each.value.block_size, null)
+  })
+}
+
+# ===========================================================
+# Copy kubeconfigs from control planes to bastion host
+# ===========================================================
+resource "null_resource" "copy_kubeconfigs_to_bastion" {
+  for_each = module.clusters
+
+  provisioner "remote-exec" {
+    inline = [
+      "set -euxo pipefail",
+
+      "echo '=== Running kubeconfig copy on bastion for ${each.key} ==='",
+      "mkdir -p ~/ansible/kubeconfigs",
+
+      "echo 'Checking SSH connectivity to ${each.value.controlplane_private_ip}'",
+      "ssh -i ~/k8s-key.pem -o StrictHostKeyChecking=no ubuntu@${each.value.controlplane_private_ip} 'echo Connected OK'",
+
+      "echo 'Waiting for admin.conf on ${each.key} ...'",
+      "until ssh -i ~/k8s-key.pem -o StrictHostKeyChecking=no ubuntu@${each.value.controlplane_private_ip} 'test -f /etc/kubernetes/admin.conf' 2>/dev/null; do echo 'Still waiting...'; sleep 10; done",
+
+      "echo 'Copying kubeconfig for ${each.key} ...'",
+      "scp -i ~/k8s-key.pem -o StrictHostKeyChecking=no ubuntu@${each.value.controlplane_private_ip}:/etc/kubernetes/admin.conf ~/ansible/kubeconfigs/${each.key}-kubeconfig.yaml",
+
+      "echo '✅ Copied ~/ansible/kubeconfigs/${each.key}-kubeconfig.yaml successfully'"
+    ]
+
+    connection {
+      type        = "ssh"
+      host        = aws_instance.bastion.public_ip
+      user        = "ubuntu"
+      private_key = tls_private_key.k8s_key_pair.private_key_pem
+    }
+  }
+
+ 
+  depends_on = [
+    aws_instance.bastion,
+    module.clusters
+  ]
 }
