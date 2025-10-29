@@ -12,9 +12,16 @@
     cluster_config: "{{ clusters[resolved_cluster_name] | default({}) }}"
     kubeconfig_path: "{{ cluster_config.kubeconfig | default('') }}"
     enable_aws_ccm: "{{ cluster_config.enable_aws_ccm | default(false) }}"
-    aws_ccm_image: "{{ cluster_config.aws_ccm_image | default(aws_ccm_image_default) }}"
+    aws_ccm_image:  "registry.k8s.io/provider-aws/cloud-controller-manager"
+    aws_ccm_image_default:  "registry.k8s.io/provider-aws/cloud-controller-manager"
+
 
   pre_tasks:
+    - name: Debug aws_ccm_image
+      debug:
+        msg: "Resolved image: {{ aws_ccm_image }}"
+
+
     - name: Fail when cluster configuration is missing from clusters map
       ansible.builtin.fail:
         msg: "Cluster '{{ resolved_cluster_name }}' was not found in clusters map from group_vars/all.yml"
@@ -37,15 +44,21 @@
           - "Kubeconfig: {{ kubeconfig_path }}"
           - "=========================================="
 
-    - name: Ensure kubeconfig exists
+    - name: Ensure kubeconfig exists (check on bastion)
       ansible.builtin.stat:
         path: "{{ kubeconfig_path }}"
       register: kubeconfig_stat
+      delegate_to: localhost
+      run_once: false
+      become: false  # Run as the bastion user, not root
 
-    - name: Fail if kubeconfig does not exist
+    - name: Fail if kubeconfig does not exist (checked on bastion)
       ansible.builtin.fail:
-        msg: "Kubeconfig not found at {{ kubeconfig_path }}"
+        msg: "Kubeconfig not found at {{ kubeconfig_path }} on bastion"
       when: not kubeconfig_stat.stat.exists
+      delegate_to: localhost
+      run_once: false
+      become: false
 
   roles:
     - role: aws_ccm
@@ -53,5 +66,4 @@
         cluster_name: "{{ resolved_cluster_name }}"
         pod_cidr: "{{ cluster_config.pod_cidr }}"
         region: "{{ aws_region }}"
-        kubeconfig_path: "{{ kubeconfig_path }}"
-        aws_ccm_image: "{{ aws_ccm_image }}"
+        ccm_image: "{{ aws_ccm_image }}"

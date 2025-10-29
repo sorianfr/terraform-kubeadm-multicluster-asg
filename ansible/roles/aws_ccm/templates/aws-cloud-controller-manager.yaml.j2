@@ -162,7 +162,7 @@ spec:
         node-role.kubernetes.io/control-plane: ""
       containers:
         - name: aws-cloud-controller-manager
-          image: {{ aws_ccm_image }}
+          image: "registry.k8s.io/provider-aws/cloud-controller-manager:v1.29.0"
           imagePullPolicy: IfNotPresent
           command:
             - /bin/aws-cloud-controller-manager
