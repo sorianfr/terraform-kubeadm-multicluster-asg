@@ -1,6 +1,6 @@
 ---
 - name: Install AWS Cloud Controller Manager on enabled clusters
-  hosts: control_planes
+  hosts: controlplanes
   gather_facts: false
   become: true
 
