@@ -12,6 +12,13 @@ ansible/
 │   ├── all.yml               # Global variables
 │   └── control_planes.yml    # Control plane specific variables
 ├── roles/
+│   ├── aws_ccm/
+│   │   ├── defaults/
+│   │   │   └── main.yml      # Default CCM image
+│   │   ├── tasks/
+│   │   │   └── main.yml      # Install AWS CCM controller
+│   │   └── templates/
+│   │       └── aws-cloud-controller-manager.yaml.j2
 │   └── calico/
 │       ├── defaults/
 │       │   └── main.yml      # Role defaults
@@ -20,6 +27,7 @@ ansible/
 │       └── templates/
 │           └── installation.yaml.j2  # Calico installation template
 ├── playbooks/
+│   ├── 5_install_aws_ccm.yml # Playbook to deploy AWS CCM
 │   └── install_calico.yml    # Playbook to install Calico
 ├── ansible.cfg              # Ansible configuration
 └── README.md                # This file
@@ -57,6 +65,22 @@ ansible-playbook -i inventory/hosts.yml playbooks/install_calico.yml
 ansible-playbook playbooks/install_calico.yml --limit cluster1_control_plane
 ```
 
+### Installing the AWS Cloud Controller Manager
+
+Clusters that set `enable_aws_ccm = true` in `terraform.tfvars` automatically receive the IAM permissions and kubeadm settings required for the external AWS Cloud Controller Manager. After Terraform finishes and the kubeconfigs have been copied to the bastion, deploy the controller with:
+
+```bash
+# From the bastion (recommended)
+ssh -i k8s-key.pem ubuntu@<bastion-public-dns>
+cd ansible
+ansible-playbook playbooks/5_install_aws_ccm.yml
+
+# Or locally
+ansible-playbook -i inventory/hosts.yml playbooks/5_install_aws_ccm.yml
+```
+
+The playbook automatically skips clusters where `enable_aws_ccm` is `false`. Override the default container image by setting `aws_ccm_image` on a per-cluster basis in `terraform.tfvars`.
+
 ### Inventory Configuration
 
 The inventory is automatically configured based on the clusters defined in `terraform.tfvars`:
@@ -71,6 +95,8 @@ Key variables that can be customized:
 - `pod_network_cidr`: Pod network CIDR for each cluster (set per cluster in inventory)
 - `bastion_public_dns`: Bastion host DNS name (set in group_vars/all.yml)
 - `calico_version`: Calico version to install (default: v3.27.3)
+- `enable_aws_ccm`: Enables the external AWS Cloud Controller Manager integration for a cluster
+- `aws_ccm_image`: Optional override for the AWS CCM container image
 
 ### Connection
 
@@ -79,3 +105,4 @@ The playbooks connect to control plane nodes through the bastion host using SSH 
 1. The bastion host is accessible
 2. The SSH key is properly configured
 3. The control plane nodes are reachable through the bastion
+

@@ -1,0 +1,73 @@
+---
+# Ensure a directory for AWS CCM manifest exists (on bastion)
+- name: Ensure directory for AWS CCM manifest exists
+  ansible.builtin.file:
+    path: "/tmp/aws-ccm-{{ cluster_name }}"
+    state: directory
+    mode: '0755'
+  delegate_to: localhost
+  run_once: false
+  become: false
+
+# Render the manifest locally (on bastion)
+- name: Render AWS Cloud Controller Manager manifest (on bastion)
+  ansible.builtin.template:
+    src: aws-cloud-controller-manager.yaml.j2
+    dest: "/tmp/aws-ccm-{{ cluster_name }}/manifest.yaml"
+    mode: '0644'
+  delegate_to: localhost
+  run_once: false
+  become: false
+
+# Debug kubeconfig path
+- name: Debug resolved kubeconfig path
+  ansible.builtin.debug:
+    msg: "Cluster {{ cluster_name }} will use kubeconfig: {{ kubeconfig_path }}"
+  delegate_to: localhost
+  run_once: false
+
+# Apply the manifest from bastion using the correct kubeconfig
+- name: Apply AWS Cloud Controller Manager manifest from bastion
+  ansible.builtin.shell: >
+    kubectl apply
+    --kubeconfig {{ kubeconfig_path }}
+    -f /tmp/aws-ccm-{{ cluster_name }}/manifest.yaml
+    --validate=false
+  delegate_to: localhost
+  run_once: false
+  become: false
+  register: apply_ccm
+  changed_when: "'created' in apply_ccm.stdout or 'configured' in apply_ccm.stdout"
+
+# Wait for deployment to be ready
+- name: Wait for AWS Cloud Controller Manager deployment to be ready
+  ansible.builtin.shell: >
+    kubectl rollout status deployment/aws-cloud-controller-manager
+    -n kube-system --timeout=300s
+    --kubeconfig {{ kubeconfig_path }}
+  delegate_to: localhost
+  run_once: false
+  become: false
+  register: ccm_rollout
+  retries: 3
+  delay: 20
+  until: ccm_rollout.rc == 0
+  changed_when: false
+
+# Display CCM pod status
+- name: Display AWS CCM deployment status
+  ansible.builtin.shell: >
+    kubectl get pods -n kube-system
+    -l k8s-app=aws-cloud-controller-manager -o wide
+    --kubeconfig {{ kubeconfig_path }}
+  delegate_to: localhost
+  run_once: false
+  become: false
+  register: ccm_pods
+  changed_when: false
+
+- name: Show AWS CCM pods
+  ansible.builtin.debug:
+    var: ccm_pods.stdout_lines
+  delegate_to: localhost
+  run_once: false

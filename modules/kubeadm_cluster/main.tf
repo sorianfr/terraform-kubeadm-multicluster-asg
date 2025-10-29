@@ -31,7 +31,9 @@ resource "aws_subnet" "k8s_private_subnet" {
   availability_zone       = var.availability_zone
 
   tags = {
-    Name = "${var.name}_private_subnet"
+    Name                                       = "${var.name}_private_subnet"
+    "kubernetes.io/cluster/${var.name}"       = "owned"
+    "kubernetes.io/role/internal-elb"         = "1"
   }
 }
 
@@ -43,7 +45,78 @@ resource "aws_route_table_association" "private_rta" {
 }
 
 locals {
-      sg_name = "k8s_sg_${var.name}"
+  sg_name        = "k8s_sg_${var.name}"
+  aws_ccm_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "autoscaling:DescribeAutoScalingGroups",
+          "autoscaling:DescribeAutoScalingInstances",
+          "autoscaling:DescribeLaunchConfigurations",
+          "autoscaling:DescribeTags",
+          "ec2:AssociateAddress",
+          "ec2:AssignPrivateIpAddresses",
+          "ec2:AttachNetworkInterface",
+          "ec2:AttachVolume",
+          "ec2:CreateRoute",
+          "ec2:CreateTags",
+          "ec2:DeleteRoute",
+          "ec2:DeleteTags",
+          "ec2:DescribeAccountAttributes",
+          "ec2:DescribeAddresses",
+          "ec2:DescribeAvailabilityZones",
+          "ec2:DescribeImages",
+          "ec2:DescribeInstances",
+          "ec2:DescribeInternetGateways",
+          "ec2:DescribeNetworkInterfaces",
+          "ec2:DescribeRegions",
+          "ec2:DescribeRouteTables",
+          "ec2:DescribeSecurityGroups",
+          "ec2:DescribeSubnets",
+          "ec2:DescribeVolumes",
+          "ec2:DescribeVpcs",
+          "ec2:DetachNetworkInterface",
+          "ec2:DetachVolume",
+          "ec2:DisassociateAddress",
+          "ec2:ModifyInstanceAttribute",
+          "ec2:UnassignPrivateIpAddresses"
+        ]
+        Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "elasticloadbalancing:AddTags",
+          "elasticloadbalancing:ApplySecurityGroupsToLoadBalancer",
+          "elasticloadbalancing:AttachLoadBalancerToSubnets",
+          "elasticloadbalancing:CreateListener",
+          "elasticloadbalancing:CreateLoadBalancer",
+          "elasticloadbalancing:CreateLoadBalancerListeners",
+          "elasticloadbalancing:CreateTargetGroup",
+          "elasticloadbalancing:DeleteListener",
+          "elasticloadbalancing:DeleteLoadBalancer",
+          "elasticloadbalancing:DeleteLoadBalancerListeners",
+          "elasticloadbalancing:DeleteTargetGroup",
+          "elasticloadbalancing:DeregisterInstancesFromLoadBalancer",
+          "elasticloadbalancing:DeregisterTargets",
+          "elasticloadbalancing:Describe*",
+          "elasticloadbalancing:ModifyLoadBalancerAttributes",
+          "elasticloadbalancing:ModifyTargetGroup",
+          "elasticloadbalancing:ModifyTargetGroupAttributes",
+          "elasticloadbalancing:RegisterInstancesWithLoadBalancer",
+          "elasticloadbalancing:RegisterTargets",
+          "elasticloadbalancing:RemoveTags",
+          "elasticloadbalancing:SetIpAddressType",
+          "elasticloadbalancing:SetSecurityGroups",
+          "elasticloadbalancing:SetSubnets",
+          "elasticloadbalancing:SetLoadBalancerPoliciesOfListener"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
 }
 
 # Security Group
@@ -170,7 +243,8 @@ resource "aws_security_group" "k8s_sg" {
   }
 
   tags = {
-    Name = "k8s_sg"
+    Name                                 = "k8s_sg"
+    "kubernetes.io/cluster/${var.name}" = "owned"
   }
 }
 
@@ -218,6 +292,11 @@ resource "aws_iam_role_policy" "cp_secrets" {
   })
 }
 
+resource "aws_iam_role_policy" "cp_aws_ccm" {
+  role   = aws_iam_role.cp_role.id
+  policy = local.aws_ccm_policy
+}
+
 # Worker IAM role
 resource "aws_iam_role" "worker_role" {
   name               = "${var.name}-worker-role"
@@ -242,6 +321,11 @@ resource "aws_iam_role_policy" "worker_secrets" {
       Resource = "arn:aws:secretsmanager:${var.region}:${data.aws_caller_identity.current.account_id}:secret:${var.name}/comando-unir*"
     }]
   })
+}
+
+resource "aws_iam_role_policy" "worker_aws_ccm" {
+  role   = aws_iam_role.worker_role.id
+  policy = local.aws_ccm_policy
 }
 
 # Attach the AmazonSSMManagedInstanceCore policy for SSM connectivity
@@ -274,12 +358,12 @@ resource "aws_instance" "control_plane" {
   private_ip             = var.controlplane_private_ip
 
   user_data = templatefile("${path.module}/templates/control_plane_userdata.sh.tpl", {
-    cluster_name = var.name
-    pod_cidr     = var.pod_cidr
-    service_cidr = var.service_cidr
+    cluster_name            = var.name
+    pod_cidr                = var.pod_cidr
+    service_cidr            = var.service_cidr
     controlplane_private_ip = var.controlplane_private_ip
     region                  = var.region
-
+    enable_aws_ccm          = var.enable_aws_ccm
   })
 
   source_dest_check = false # Disable Source/Destination Check
@@ -294,6 +378,7 @@ output "control_plane_userdata" {
     service_cidr            = var.service_cidr
     controlplane_private_ip = var.controlplane_private_ip
     region                  = var.region
+    enable_aws_ccm          = var.enable_aws_ccm
   })
 }
 
@@ -306,17 +391,18 @@ resource "aws_launch_template" "worker_lt" {
   iam_instance_profile { name = aws_iam_instance_profile.worker_profile.name }
 
   user_data = base64encode(templatefile("${path.module}/templates/worker_userdata.sh.tpl", {
-    cluster_name = var.name
-    region = var.region
+    cluster_name            = var.name
+    region                  = var.region
     controlplane_private_ip = var.controlplane_private_ip
-
+    enable_aws_ccm          = var.enable_aws_ccm
   }))
 
   depends_on = [
     aws_instance.control_plane,  # ensure the control plane is provisioned
     aws_iam_role.worker_role,    # ensure IAM ready
     aws_iam_instance_profile.worker_profile,
-    aws_iam_role_policy.worker_secrets
+    aws_iam_role_policy.worker_secrets,
+    aws_iam_role_policy.worker_aws_ccm
   ]
 }
 
