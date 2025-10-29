@@ -31,9 +31,9 @@ resource "aws_subnet" "k8s_private_subnet" {
   availability_zone       = var.availability_zone
 
   tags = {
-    Name                                       = "${var.name}_private_subnet"
-    "kubernetes.io/cluster/${var.name}"       = "owned"
-    "kubernetes.io/role/internal-elb"         = "1"
+    Name                                 = "${var.name}_private_subnet"
+    "kubernetes.io/cluster/${var.name}" = "owned"
+    "kubernetes.io/role/internal-elb"   = "1"
   }
 }
 
@@ -368,7 +368,10 @@ resource "aws_instance" "control_plane" {
 
   source_dest_check = false # Disable Source/Destination Check
 
-  tags = { Name = "${var.name}-control-plane" }
+  tags = {
+    Name                                 = "${var.name}-control-plane"
+    "kubernetes.io/cluster/${var.name}" = "owned"
+  }
 }
 
 output "control_plane_userdata" {
@@ -427,6 +430,11 @@ resource "aws_autoscaling_group" "workers" {
   tag {
     key                 = "Name"
     value               = "${var.name}-worker"
+    propagate_at_launch = true
+  }
+  tag {
+    key                 = "kubernetes.io/cluster/${var.name}"
+    value               = "owned"
     propagate_at_launch = true
   }
   tag {
