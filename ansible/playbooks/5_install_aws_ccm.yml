@@ -8,12 +8,18 @@
     - ../group_vars/all.yml
 
   vars:
-    cluster_config: "{{ clusters[cluster_name] }}"
-    kubeconfig_path: "{{ cluster_config.kubeconfig }}"
+    resolved_cluster_name: "{{ hostvars[inventory_hostname].cluster_name | default(inventory_hostname) }}"
+    cluster_config: "{{ clusters[resolved_cluster_name] | default({}) }}"
+    kubeconfig_path: "{{ cluster_config.kubeconfig | default('') }}"
     enable_aws_ccm: "{{ cluster_config.enable_aws_ccm | default(false) }}"
     aws_ccm_image: "{{ cluster_config.aws_ccm_image | default(aws_ccm_image_default) }}"
 
   pre_tasks:
+    - name: Fail when cluster configuration is missing from clusters map
+      ansible.builtin.fail:
+        msg: "Cluster '{{ resolved_cluster_name }}' was not found in clusters map from group_vars/all.yml"
+      when: cluster_config is not mapping or (cluster_config | length) == 0
+
     - name: Skip cluster when AWS CCM is disabled
       ansible.builtin.meta: end_play
       when: not (enable_aws_ccm | bool)
@@ -22,7 +28,7 @@
       ansible.builtin.debug:
         msg:
           - "=========================================="
-          - "Cluster: {{ cluster_name }}"
+          - "Cluster: {{ resolved_cluster_name }}"
           - "Control Plane: {{ cluster_config.controlplane_ip }}"
           - "AWS Region: {{ aws_region }}"
           - "Pod CIDR: {{ cluster_config.pod_cidr }}"
@@ -44,7 +50,7 @@
   roles:
     - role: aws_ccm
       vars:
-        cluster_name: "{{ cluster_name }}"
+        cluster_name: "{{ resolved_cluster_name }}"
         pod_cidr: "{{ cluster_config.pod_cidr }}"
         region: "{{ aws_region }}"
         kubeconfig_path: "{{ kubeconfig_path }}"
