@@ -13,24 +13,17 @@ metadata:
     k8s-app: aws-cloud-controller-manager
   name: system:aws-cloud-controller-manager
 rules:
-  - apiGroups:
-      - ""
+  - apiGroups: [""]
     resources:
       - nodes
+      - nodes/status
     verbs:
       - get
       - list
       - watch
       - update
       - patch
-  - apiGroups:
-      - ""
-    resources:
-      - nodes/status
-    verbs:
-      - patch
-  - apiGroups:
-      - ""
+  - apiGroups: [""]
     resources:
       - services
       - services/status
@@ -39,16 +32,14 @@ rules:
       - watch
       - patch
       - update
-  - apiGroups:
-      - ""
+  - apiGroups: [""]
     resources:
       - events
     verbs:
       - create
       - patch
       - update
-  - apiGroups:
-      - coordination.k8s.io
+  - apiGroups: ["coordination.k8s.io"]
     resources:
       - leases
     verbs:
@@ -58,6 +49,27 @@ rules:
       - create
       - update
       - patch
+  - apiGroups: [""]
+    resources:
+      - configmaps
+      - secrets
+      - endpoints
+    verbs:
+      - create
+      - get
+      - list
+      - watch
+      - update
+  # ✅ Required for external CCM to manage node lifecycles
+  - apiGroups: [""]
+    resources:
+      - serviceaccounts
+      - serviceaccounts/token
+    verbs:
+      - get
+      - list
+      - watch
+      - create
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -82,32 +94,27 @@ metadata:
   name: system:aws-cloud-controller-manager
   namespace: kube-system
 rules:
-  - apiGroups:
-      - ""
+  - apiGroups: [""]
     resources:
       - configmaps
-    verbs:
-      - create
-      - get
-      - list
-      - update
-      - watch
-  - apiGroups:
-      - ""
-    resources:
       - secrets
-    verbs:
-      - get
-  - apiGroups:
-      - ""
-    resources:
       - endpoints
     verbs:
-      - get
       - create
+      - get
       - list
       - watch
       - update
+  # ✅ Namespace-local SA access
+  - apiGroups: [""]
+    resources:
+      - serviceaccounts
+      - serviceaccounts/token
+    verbs:
+      - get
+      - list
+      - watch
+      - create
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
